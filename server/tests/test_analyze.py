@@ -1,5 +1,8 @@
 from pathlib import Path
 
+import numpy as np
+import soundfile as sf
+
 from app.analyze import extract_features
 from tests.helpers import write_tone
 
@@ -26,6 +29,21 @@ def test_vibrato_tone_reports_vibrato(tmp_path: Path):
     f = extract_features(wav)
     assert f.vibrato_extent_cents > 15
     assert 4.0 < f.vibrato_rate_hz < 7.0
+
+
+def test_leading_silence_is_trimmed(tmp_path: Path):
+    """A 1-second silent head should be trimmed before feature extraction."""
+    sr = 22050
+    silence = np.zeros(sr, dtype=np.float32)
+    t = np.linspace(0, 2.0, sr * 2, endpoint=False)
+    tone = 0.3 * np.sin(2 * np.pi * 440 * t).astype(np.float32)
+    y = np.concatenate([silence, tone, silence])
+    wav = tmp_path / "padded.wav"
+    sf.write(str(wav), y, sr)
+
+    f = extract_features(wav)
+    # Raw file is 4 s, but after trim it should be ~2 s
+    assert f.duration_sec < 3.0
 
 
 def test_contours_present_and_aligned(tmp_path: Path):

@@ -18,8 +18,10 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { analyzeRecording } from "./src/api";
 import { FeedbackView } from "./src/FeedbackView";
 import { HistoryScreen } from "./src/HistoryScreen";
+import { LevelMeter } from "./src/LevelMeter";
 import { usePlayer } from "./src/Player";
 import { useRecorder } from "./src/Recorder";
+import { SongSuggest } from "./src/SongSuggest";
 
 function formatElapsed(ms) {
   const total = Math.floor(ms / 1000);
@@ -158,6 +160,13 @@ export default function App() {
                 value={songTitle}
                 onChangeText={setSongTitle}
               />
+              <SongSuggest
+                query={songTitle}
+                onPick={(s) => {
+                  setSongTitle(s.song_title);
+                  if (s.artist) setArtist(s.artist);
+                }}
+              />
 
               <Text style={styles.label}>アーティスト</Text>
               <TextInput
@@ -190,9 +199,12 @@ export default function App() {
                 {recorder.isRecording ? "■ 停止" : "● 録音開始"}
               </Text>
               {recorder.isRecording ? (
-                <Text style={styles.timer}>
-                  {formatElapsed(recorder.elapsedMs)}
-                </Text>
+                <>
+                  <Text style={styles.timer}>
+                    {formatElapsed(recorder.elapsedMs)}
+                  </Text>
+                  <LevelMeter level={recorder.level} />
+                </>
               ) : recordingUri ? (
                 <Text style={styles.timerDone}>録音済み</Text>
               ) : null}

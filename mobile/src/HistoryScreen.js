@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -9,35 +10,45 @@ import {
   View,
 } from "react-native";
 
-import { fetchSessionDetail, fetchSessions } from "./api";
+import {
+  deleteSession,
+  fetchSessionDetail,
+  fetchSessions,
+  fetchSongs,
+} from "./api";
 import { FeedbackView } from "./FeedbackView";
+import { TrendChart } from "./TrendChart";
 
 export function HistoryScreen({ onClose }) {
-  const [sessions, setSessions] = useState(null);
-  const [selected, setSelected] = useState(null);
+  const [songs, setSongs] = useState(null);
+  const [selectedSong, setSelectedSong] = useState(null);
+  const [songSessions, setSongSessions] = useState(null);
+  const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  async function load() {
+  async function loadSongs() {
     try {
       setError(null);
-      const list = await fetchSessions();
-      setSessions(list);
+      const list = await fetchSongs();
+      setSongs(list);
     } catch (e) {
       setError(e.message || String(e));
     }
   }
 
   useEffect(() => {
-    load();
+    loadSongs();
   }, []);
 
-  async function openDetail(id) {
+  async function openSong(songTitle) {
     setLoading(true);
+    setSelectedSong(songTitle);
+    setSongSessions(null);
     try {
-      const detail = await fetchSessionDetail(id);
-      setSelected(detail);
+      const list = await fetchSessions({ song: songTitle });
+      setSongSessions(list);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -45,26 +56,110 @@ export function HistoryScreen({ onClose }) {
     }
   }
 
-  if (selected) {
+  async function openDetail(id) {
+    setLoading(true);
+    try {
+      const d = await fetchSessionDetail(id);
+      setDetail(d);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function confirmDelete(id) {
+    Alert.alert("削除しますか？", "このセッションは復元できません。", [
+      { text: "キャンセル", style: "cancel" },
+      {
+        text: "削除",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await deleteSession(id);
+            if (selectedSong) await openSong(selectedSong);
+            else await loadSongs();
+          } catch (e) {
+            Alert.alert("削除失敗", e.message || String(e));
+          }
+        },
+      },
+    ]);
+  }
+
+  // Detail view
+  if (detail) {
     return (
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.header}>
-          <Pressable onPress={() => setSelected(null)}>
-            <Text style={styles.backLink}>← 履歴に戻る</Text>
+          <Pressable onPress={() => setDetail(null)}>
+            <Text style={styles.backLink}>← 一覧に戻る</Text>
           </Pressable>
           <Text style={styles.sub}>
-            {selected.song_title}
-            {selected.artist ? ` / ${selected.artist}` : ""}
+            {detail.song_title}
+            {detail.artist ? ` / ${detail.artist}` : ""}
           </Text>
           <Text style={styles.time}>
-            {new Date(selected.created_at).toLocaleString()}
+            {new Date(detail.created_at).toLocaleString()}
           </Text>
         </View>
-        <FeedbackView data={selected} />
+        <FeedbackView data={detail} />
       </ScrollView>
     );
   }
 
+  // Song's session list view
+  if (selectedSong) {
+    const scores = (songSessions || [])
+      .slice()
+      .reverse()
+      .map((s) => s.overall)
+      .filter((v) => typeof v === "number");
+
+    return (
+      <ScrollView contentContainerStyle={styles.scroll}>
+        <View style={styles.header}>
+          <Pressable
+            onPress={() => {
+              setSelectedSong(null);
+              setSongSessions(null);
+            }}
+          >
+            <Text style={styles.backLink}>← 曲一覧に戻る</Text>
+          </Pressable>
+          <Text style={styles.title}>{selectedSong}</Text>
+        </View>
+
+        {loading && <ActivityIndicator color="#7aa2ff" />}
+        {scores.length >= 2 && <TrendChart scores={scores} />}
+
+        {(songSessions || []).map((s) => (
+          <Pressable
+            key={s.id}
+            style={styles.row}
+            onPress={() => openDetail(s.id)}
+            onLongPress={() => confirmDelete(s.id)}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTime}>
+                {new Date(s.created_at).toLocaleString()}
+              </Text>
+              {s.artist ? <Text style={styles.artist}>{s.artist}</Text> : null}
+            </View>
+            <View style={styles.scorePill}>
+              <Text style={styles.scorePillText}>{s.overall ?? "-"}</Text>
+            </View>
+          </Pressable>
+        ))}
+        {songSessions && songSessions.length === 0 && (
+          <Text style={styles.empty}>記録がありません</Text>
+        )}
+        <Text style={styles.hint}>長押しで削除</Text>
+      </ScrollView>
+    );
+  }
+
+  // Song list (default)
   return (
     <ScrollView
       contentContainerStyle={styles.scroll}
@@ -73,7 +168,7 @@ export function HistoryScreen({ onClose }) {
           refreshing={refreshing}
           onRefresh={async () => {
             setRefreshing(true);
-            await load();
+            await loadSongs();
             setRefreshing(false);
           }}
           tintColor="#7aa2ff"
@@ -87,29 +182,29 @@ export function HistoryScreen({ onClose }) {
         <Text style={styles.title}>練習履歴</Text>
       </View>
 
-      {loading && <ActivityIndicator color="#7aa2ff" />}
       {error && <Text style={styles.error}>{error}</Text>}
 
-      {sessions === null ? (
+      {songs === null ? (
         <ActivityIndicator color="#7aa2ff" />
-      ) : sessions.length === 0 ? (
+      ) : songs.length === 0 ? (
         <Text style={styles.empty}>まだ履歴がありません。録音してみましょう。</Text>
       ) : (
-        sessions.map((s) => (
+        songs.map((s) => (
           <Pressable
-            key={s.id}
+            key={s.song_title}
             style={styles.row}
-            onPress={() => openDetail(s.id)}
+            onPress={() => openSong(s.song_title)}
           >
             <View style={{ flex: 1 }}>
               <Text style={styles.song}>{s.song_title}</Text>
               {s.artist ? <Text style={styles.artist}>{s.artist}</Text> : null}
               <Text style={styles.rowTime}>
-                {new Date(s.created_at).toLocaleString()}
+                {s.times} 回練習 · 最新{" "}
+                {new Date(s.last_practiced).toLocaleDateString()}
               </Text>
             </View>
             <View style={styles.scorePill}>
-              <Text style={styles.scorePillText}>{s.overall ?? "-"}</Text>
+              <Text style={styles.scorePillText}>{s.best_score ?? "-"}</Text>
             </View>
           </Pressable>
         ))
@@ -145,4 +240,5 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   scorePillText: { color: "#ffffff", fontWeight: "700", fontSize: 16 },
+  hint: { color: "#6d7bb0", fontSize: 11, textAlign: "center", marginTop: 10 },
 });

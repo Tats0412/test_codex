@@ -50,11 +50,20 @@ export async function analyzeRecording({
   return res.json();
 }
 
-export async function fetchSessions() {
-  const res = await fetch(`${getApiBaseUrl()}/sessions`);
+export async function fetchSessions({ song } = {}) {
+  const url = new URL(`${getApiBaseUrl()}/sessions`);
+  if (song) url.searchParams.set("song", song);
+  const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`Load sessions failed (${res.status})`);
   const data = await res.json();
   return data.sessions || [];
+}
+
+export async function fetchSongs() {
+  const res = await fetch(`${getApiBaseUrl()}/songs`);
+  if (!res.ok) throw new Error(`Load songs failed (${res.status})`);
+  const data = await res.json();
+  return data.songs || [];
 }
 
 export async function fetchSessionDetail(id) {

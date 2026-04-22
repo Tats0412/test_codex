@@ -118,11 +118,18 @@ def _longest_voiced_run(voiced_flag: np.ndarray, hop_sec: float) -> float:
 
 def extract_features(path: str | Path) -> VocalFeatures:
     y, sr = librosa.load(str(path), sr=22050, mono=True)
-    duration = librosa.get_duration(y=y, sr=sr)
 
-    # Normalize loudness-ish
+    # Normalize amplitude first so trim threshold is consistent
     if np.max(np.abs(y)) > 0:
         y = y / np.max(np.abs(y))
+
+    # Trim leading/trailing silence (<30 dB below peak) so pauses before
+    # the user starts singing don't inflate silence_ratio or skew rhythm.
+    y_trimmed, _ = librosa.effects.trim(y, top_db=30)
+    if y_trimmed.size > sr * 0.5:  # keep trim only if something survived
+        y = y_trimmed
+
+    duration = librosa.get_duration(y=y, sr=sr)
 
     hop = 512
     frame_length = 2048
@@ -167,6 +174,7 @@ def extract_features(path: str | Path) -> VocalFeatures:
 
     # Rhythm
     tempo, _ = librosa.beat.beat_track(y=y, sr=sr, hop_length=hop)
+    tempo_scalar = float(np.asarray(tempo).flat[0]) if np.size(tempo) else 0.0
     onsets = librosa.onset.onset_detect(y=y, sr=sr, hop_length=hop, units="time")
 
     # Silence / phrasing
@@ -199,7 +207,7 @@ def extract_features(path: str | Path) -> VocalFeatures:
 
     return VocalFeatures(
         duration_sec=float(duration),
-        tempo_bpm=float(tempo),
+        tempo_bpm=tempo_scalar,
         median_pitch_hz=median_pitch,
         pitch_range_semitones=pitch_range_semitones,
         pitch_stability_cents=pitch_stability,

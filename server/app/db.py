@@ -73,13 +73,37 @@ def save_session(
         return int(cur.lastrowid)
 
 
-def list_sessions(limit: int = 50) -> list[dict[str, Any]]:
+def list_sessions(
+    limit: int = 50, song: str | None = None
+) -> list[dict[str, Any]]:
+    query = (
+        "SELECT id, created_at, song_title, artist, overall FROM sessions"
+    )
+    params: list[Any] = []
+    if song:
+        query += " WHERE song_title = ?"
+        params.append(song)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+
+    with _connect() as conn:
+        rows = conn.execute(query, tuple(params)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def recent_songs(limit: int = 20) -> list[dict[str, Any]]:
+    """Return recently-practiced songs with per-song stats."""
     with _connect() as conn:
         rows = conn.execute(
             """
-            SELECT id, created_at, song_title, artist, overall
+            SELECT song_title,
+                   MAX(artist) AS artist,
+                   COUNT(*)   AS times,
+                   MAX(overall) AS best_score,
+                   MAX(created_at) AS last_practiced
             FROM sessions
-            ORDER BY id DESC
+            GROUP BY song_title
+            ORDER BY MAX(created_at) DESC
             LIMIT ?
             """,
             (limit,),

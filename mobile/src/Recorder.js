@@ -5,15 +5,14 @@ export function useRecorder() {
   const recordingRef = useRef(null);
   const [isRecording, setIsRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [level, setLevel] = useState(0); // 0..1 normalized input level
   const tickRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
       if (recordingRef.current) {
-        recordingRef.current
-          .stopAndUnloadAsync()
-          .catch(() => {});
+        recordingRef.current.stopAndUnloadAsync().catch(() => {});
       }
     };
   }, []);
@@ -29,6 +28,15 @@ export function useRecorder() {
 
     const { recording } = await Audio.Recording.createAsync(
       Audio.RecordingOptionsPresets.HIGH_QUALITY,
+      (status) => {
+        if (status.metering != null) {
+          // metering is dBFS (typically -160..0). Map to 0..1.
+          const db = status.metering;
+          const normalized = Math.max(0, Math.min(1, (db + 60) / 60));
+          setLevel(normalized);
+        }
+      },
+      100, // update every 100ms
     );
     recordingRef.current = recording;
     setElapsedMs(0);
@@ -51,8 +59,9 @@ export function useRecorder() {
     const uri = recordingRef.current.getURI();
     recordingRef.current = null;
     setIsRecording(false);
+    setLevel(0);
     return uri;
   }
 
-  return { isRecording, elapsedMs, start, stop };
+  return { isRecording, elapsedMs, level, start, stop };
 }

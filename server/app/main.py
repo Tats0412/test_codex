@@ -13,7 +13,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from .analyze import extract_features, features_to_dict
 from .coach import generate_feedback
 from .compare import compare_to_reference, report_to_dict
-from .db import delete_session, get_session, init_db, list_sessions, save_session
+from .db import (
+    delete_session,
+    get_session,
+    init_db,
+    list_sessions,
+    recent_songs,
+    save_session,
+)
 
 load_dotenv()
 logger = logging.getLogger("vocal_trainer")
@@ -119,8 +126,13 @@ async def analyze(
 
 
 @app.get("/sessions")
-def sessions() -> dict:
-    return {"sessions": list_sessions()}
+def sessions(song: str | None = None, limit: int = 50) -> dict:
+    return {"sessions": list_sessions(limit=limit, song=song)}
+
+
+@app.get("/songs")
+def songs() -> dict:
+    return {"songs": recent_songs()}
 
 
 @app.get("/sessions/{session_id}")
