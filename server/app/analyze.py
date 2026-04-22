@@ -44,6 +44,11 @@ class VocalFeatures:
     silence_ratio: float
     longest_phrase_sec: float
 
+    # Downsampled time series for visualization (~100 points)
+    pitch_contour_midi: list
+    loudness_contour_db: list
+    contour_times_sec: list
+
 
 def _hz_to_cents_from_nearest_semitone(f0: np.ndarray) -> np.ndarray:
     """For each valid f0, return detuning in cents from the nearest semitone."""
@@ -170,6 +175,28 @@ def extract_features(path: str | Path) -> VocalFeatures:
     silence_ratio = float(silent_frames.mean())
     longest_phrase = _longest_voiced_run(voiced, hop / sr)
 
+    # Downsample contours to ~100 points for visualization
+    target_points = 100
+    n_frames = len(f0)
+    step = max(1, n_frames // target_points)
+    idx = np.arange(0, n_frames, step)
+    pitch_midi = np.where(
+        voiced & ~np.isnan(f0),
+        69 + 12 * np.log2(np.where(f0 > 0, f0, 1) / 440.0),
+        np.nan,
+    )
+    rms_db_aligned = np.interp(
+        np.linspace(0, len(rms_db) - 1, n_frames),
+        np.arange(len(rms_db)),
+        rms_db,
+    )
+    pitch_contour_midi = [
+        None if np.isnan(pitch_midi[i]) else round(float(pitch_midi[i]), 2)
+        for i in idx
+    ]
+    loudness_contour_db = [round(float(rms_db_aligned[i]), 2) for i in idx]
+    contour_times_sec = [round(float(i * hop / sr), 2) for i in idx]
+
     return VocalFeatures(
         duration_sec=float(duration),
         tempo_bpm=float(tempo),
@@ -187,6 +214,9 @@ def extract_features(path: str | Path) -> VocalFeatures:
         onset_regularity=_onset_regularity(onsets),
         silence_ratio=silence_ratio,
         longest_phrase_sec=float(longest_phrase),
+        pitch_contour_midi=pitch_contour_midi,
+        loudness_contour_db=loudness_contour_db,
+        contour_times_sec=contour_times_sec,
     )
 
 

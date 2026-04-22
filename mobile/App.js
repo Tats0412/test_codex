@@ -1,3 +1,4 @@
+import * as DocumentPicker from "expo-document-picker";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import {
@@ -16,6 +17,8 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
 import { analyzeRecording } from "./src/api";
 import { FeedbackView } from "./src/FeedbackView";
+import { HistoryScreen } from "./src/HistoryScreen";
+import { usePlayer } from "./src/Player";
 import { useRecorder } from "./src/Recorder";
 
 function formatElapsed(ms) {
@@ -27,12 +30,16 @@ function formatElapsed(ms) {
 
 export default function App() {
   const recorder = useRecorder();
+  const player = usePlayer();
   const [songTitle, setSongTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [userNote, setUserNote] = useState("");
   const [recordingUri, setRecordingUri] = useState(null);
+  const [referenceUri, setReferenceUri] = useState(null);
+  const [referenceName, setReferenceName] = useState("");
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [screen, setScreen] = useState("home"); // home | history
 
   async function handleToggleRecord() {
     try {
@@ -46,6 +53,34 @@ export default function App() {
       }
     } catch (e) {
       Alert.alert("録音エラー", e.message || String(e));
+    }
+  }
+
+  async function handlePickReference() {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "audio/*",
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled) return;
+      const asset = res.assets?.[0];
+      if (!asset) return;
+      setReferenceUri(asset.uri);
+      setReferenceName(asset.name || "reference");
+    } catch (e) {
+      Alert.alert("選択に失敗", e.message || String(e));
+    }
+  }
+
+  async function handlePlayRecording() {
+    if (player.isPlaying) {
+      await player.stop();
+    } else if (recordingUri) {
+      try {
+        await player.play(recordingUri);
+      } catch (e) {
+        Alert.alert("再生エラー", e.message || String(e));
+      }
     }
   }
 
@@ -63,6 +98,7 @@ export default function App() {
     try {
       const data = await analyzeRecording({
         uri: recordingUri,
+        referenceUri,
         songTitle: songTitle.trim(),
         artist: artist.trim(),
         userNote: userNote.trim(),
@@ -73,6 +109,17 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  if (screen === "history") {
+    return (
+      <SafeAreaProvider>
+        <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
+          <StatusBar style="light" />
+          <HistoryScreen onClose={() => setScreen("home")} />
+        </SafeAreaView>
+      </SafeAreaProvider>
+    );
   }
 
   return (
@@ -87,10 +134,20 @@ export default function App() {
             contentContainerStyle={styles.container}
             keyboardShouldPersistTaps="handled"
           >
-            <Text style={styles.title}>AI ボーカルコーチ</Text>
-            <Text style={styles.subtitle}>
-              歌った録音を送ると、曲に合わせたアドバイスが届きます
-            </Text>
+            <View style={styles.topRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>AI ボーカルコーチ</Text>
+                <Text style={styles.subtitle}>
+                  歌った録音を送ると、曲に合わせたアドバイスが届きます
+                </Text>
+              </View>
+              <Pressable
+                style={styles.historyButton}
+                onPress={() => setScreen("history")}
+              >
+                <Text style={styles.historyButtonText}>履歴</Text>
+              </Pressable>
+            </View>
 
             <View style={styles.form}>
               <Text style={styles.label}>曲名 *</Text>
@@ -141,6 +198,32 @@ export default function App() {
               ) : null}
             </Pressable>
 
+            {recordingUri && !recorder.isRecording ? (
+              <Pressable style={styles.miniButton} onPress={handlePlayRecording}>
+                <Text style={styles.miniButtonText}>
+                  {player.isPlaying ? "■ 停止" : "▶ 録音を再生"}
+                </Text>
+              </Pressable>
+            ) : null}
+
+            <Pressable style={styles.miniButton} onPress={handlePickReference}>
+              <Text style={styles.miniButtonText}>
+                {referenceName
+                  ? `お手本: ${referenceName}`
+                  : "お手本音源を選ぶ(任意)"}
+              </Text>
+              {referenceName ? (
+                <Pressable
+                  onPress={() => {
+                    setReferenceUri(null);
+                    setReferenceName("");
+                  }}
+                >
+                  <Text style={styles.clearX}>×</Text>
+                </Pressable>
+              ) : null}
+            </Pressable>
+
             <Pressable
               style={[
                 styles.analyzeButton,
@@ -167,8 +250,16 @@ export default function App() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#0b1020" },
   container: { padding: 20, paddingBottom: 60 },
+  topRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   title: { color: "#ffffff", fontSize: 26, fontWeight: "700" },
   subtitle: { color: "#9bb0ff", marginTop: 6, marginBottom: 18 },
+  historyButton: {
+    backgroundColor: "#1b2650",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  historyButtonText: { color: "#ffffff", fontSize: 13, fontWeight: "600" },
   form: { gap: 6, marginBottom: 18 },
   label: { color: "#9bb0ff", fontSize: 13, marginTop: 6 },
   input: {
@@ -191,6 +282,18 @@ const styles = StyleSheet.create({
   recordButtonText: { color: "#ffffff", fontSize: 18, fontWeight: "600" },
   timer: { color: "#ff9fb6", fontSize: 14, fontVariant: ["tabular-nums"] },
   timerDone: { color: "#8ef0c1", fontSize: 13 },
+  miniButton: {
+    marginTop: 10,
+    backgroundColor: "#141a33",
+    paddingVertical: 12,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+  },
+  miniButtonText: { color: "#ffffff", fontSize: 14 },
+  clearX: { color: "#ff9fb6", fontSize: 18, paddingHorizontal: 8 },
   analyzeButton: {
     marginTop: 12,
     backgroundColor: "#7aa2ff",

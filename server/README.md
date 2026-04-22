@@ -60,6 +60,24 @@ Response:
 }
 ```
 
+## Endpoints
+
+| method | path | purpose |
+| --- | --- | --- |
+| `POST` | `/analyze` | 録音を解析してフィードバックを返す。`reference` を付けるとお手本比較も返す |
+| `GET` | `/sessions` | 過去のセッション一覧 |
+| `GET` | `/sessions/{id}` | セッションの詳細(特徴量・フィードバック・比較結果) |
+| `DELETE` | `/sessions/{id}` | セッション削除 |
+
+## Tests
+
+```bash
+pip install pytest
+pytest tests/ -q
+```
+
+テストは合成トーン(librosa で生成)を用いるので録音データ不要・API不要で走ります。
+
 ## Notes
 
 - Claude cannot process audio directly. Features are extracted server-side

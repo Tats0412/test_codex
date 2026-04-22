@@ -1,5 +1,7 @@
 import { StyleSheet, Text, View } from "react-native";
 
+import { PitchChart } from "./PitchChart";
+
 function ScoreBar({ label, value }) {
   const clamped = Math.max(0, Math.min(100, value || 0));
   return (
@@ -13,9 +15,17 @@ function ScoreBar({ label, value }) {
   );
 }
 
+function formatSec(v) {
+  if (v == null) return "-";
+  const total = Math.max(0, v);
+  const m = Math.floor(total / 60);
+  const s = (total % 60).toFixed(1);
+  return `${m}:${s.padStart(4, "0")}`;
+}
+
 export function FeedbackView({ data }) {
   if (!data) return null;
-  const { feedback } = data;
+  const { feedback, features, comparison } = data;
   if (!feedback) return null;
 
   const scores = feedback.scores || {};
@@ -39,6 +49,8 @@ export function FeedbackView({ data }) {
         <ScoreBar label="表現" value={scores.expression} />
         <ScoreBar label="安定" value={scores.stability} />
       </View>
+
+      <PitchChart features={features} />
 
       {feedback.strengths?.length > 0 && (
         <View style={styles.card}>
@@ -65,6 +77,42 @@ export function FeedbackView({ data }) {
           ))}
         </View>
       )}
+
+      {feedback.timestamped_notes?.length > 0 && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>お手本との比較コメント</Text>
+          {feedback.timestamped_notes.map((note, i) => (
+            <View key={i} style={styles.tsRow}>
+              <Text style={styles.tsRange}>
+                {formatSec(note.start_sec)} – {formatSec(note.end_sec)}
+              </Text>
+              <Text style={styles.tsComment}>{note.comment}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {comparison ? (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>お手本との一致度</Text>
+          <Text style={styles.bullet}>
+            ・音程一致率: {Math.round((comparison.pitch_match_ratio || 0) * 100)}%
+          </Text>
+          <Text style={styles.bullet}>
+            ・平均ズレ: {comparison.avg_abs_cents_off} セント
+          </Text>
+          {comparison.key_offset_semitones !== 0 && (
+            <Text style={styles.bullet}>
+              ・キー差: {comparison.key_offset_semitones > 0 ? "+" : ""}
+              {comparison.key_offset_semitones} 半音
+            </Text>
+          )}
+          <Text style={styles.bullet}>
+            ・タイミング: {comparison.timing_offset_sec > 0 ? "遅れ気味" : "先走り気味"}{" "}
+            ({comparison.timing_offset_sec.toFixed(2)}s)
+          </Text>
+        </View>
+      ) : null}
 
       {feedback.song_specific ? (
         <View style={styles.card}>
@@ -122,5 +170,8 @@ const styles = StyleSheet.create({
   improvementArea: { color: "#ffd48a", fontWeight: "600" },
   improvementDetail: { color: "#ffffff", lineHeight: 20 },
   improvementDrill: { color: "#9bb0ff", fontStyle: "italic", marginTop: 4 },
+  tsRow: { backgroundColor: "#0f1530", padding: 10, borderRadius: 10, gap: 2 },
+  tsRange: { color: "#8ef0c1", fontVariant: ["tabular-nums"], fontSize: 12 },
+  tsComment: { color: "#ffffff", lineHeight: 20 },
   paragraph: { color: "#ffffff", lineHeight: 20 },
 });
